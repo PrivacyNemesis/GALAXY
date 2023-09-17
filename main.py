@@ -2,40 +2,46 @@ import random
 
 from kivy import platform
 from kivy.config import Config
-Config.set('graphics', 'width', '1920')
-Config.set('graphics', 'height', '1080')
+from kivy.core.audio import SoundLoader
+from kivy.lang import Builder
+from kivy.uix.relativelayout import RelativeLayout
+
+Config.set('graphics', 'width', '1280')
+Config.set('graphics', 'height', '720')
 
 from kivy.core.window import Window
 from kivy.app import App
 from kivy.graphics.context_instructions import Color
 from kivy.graphics.vertex_instructions import Line, Quad, Triangle
-from kivy.properties import NumericProperty, Clock
-from kivy.uix.widget import Widget
+from kivy.properties import NumericProperty, Clock, ObjectProperty, StringProperty
 
+Builder.load_file("menu.kv")
 
-class MainWidget(Widget):
+class MainWidget(RelativeLayout):
     from transforms import transform, transform_2D, transform_perspective
     from user_actions import on_keyboard_up, on_keyboard_down, keyboard_closed, on_touch_up, on_touch_down
+
+    menu_widget = ObjectProperty()
     perspective_point_x = NumericProperty(0)
     perspective_point_y = NumericProperty(0)
 
     V_NB_LINES = 8
-    V_LINES_SPACING = .4  # percentage in screen width
+    V_LINES_SPACING = .4  # Pourcentage de la largeur de l'écran
     vertical_lines = []
 
     H_NB_LINES = 8
-    H_LINES_SPACING = .15  # percentage in screen width
+    H_LINES_SPACING = .15  # Pourcentage de la largeur de l'écran
     horizontal_lines = []
 
-    SPEED = .2
+    SPEED = .8
     current_offset_y = 0
     current_y_loop = 0
 
-    SPEED_X = .5
+    SPEED_X = 3.5
     current_speed_x = 0
     current_offset_x = 0
 
-    NB_TILES = 8
+    NB_TILES = 16
     tiles = []
     tiles_coordinates = []
 
@@ -45,22 +51,65 @@ class MainWidget(Widget):
     ship = None
     ship_coordinates = [(0, 0), (0, 0), (0, 0)]
 
+    state_game_over = False
+    state_game_has_started = False
+
+    menu_title = StringProperty("G   A   L   A   X   Y")
+    menu_button_title = StringProperty("START")
+    score_txt = StringProperty()
+
+    sound_begin = None
+    sound_galaxy = None
+    sound_gameover_impact = None
+    sound_gameover_voice = None
+    sound_music1 = None
+    sound_restart = None
+
     def __init__(self, **kwargs):
         super(MainWidget, self).__init__(**kwargs)
         # print("INIT W:" + str(self.width) + " H:" + str(self.height))
+        self.init_audio()
         self.init_vertical_lines()
         self.init_horizontal_lines()
         self.init_tiles()
         self.init_ship()
 
-        self.pre_fill_tiles_coordinates()
-        self.generate_tiles_coordinates()
+        self.reset_game()
 
         if self.is_desktop():
             self._keyboard = Window.request_keyboard(self.keyboard_closed, self)
             self._keyboard.bind(on_key_down=self.on_keyboard_down)
             self._keyboard.bind(on_key_up=self.on_keyboard_up)
         Clock.schedule_interval(self.update, 1.0 / 60.0)
+
+        self.sound_galaxy.play()
+
+    def init_audio(self):
+        self.sound_begin = SoundLoader.load('audio/begin.wav')
+        self.sound_galaxy = SoundLoader.load('audio/menu_space.wav')
+        self.sound_gameover_impact = SoundLoader.load('audio/gameover_impact.wav')
+        self.sound_gameover_voice = SoundLoader.load('audio/gameover_voice.wav')
+        self.sound_music1 = SoundLoader.load('audio/galaxy.wav')
+        self.sound_restart = SoundLoader.load('audio/restart.wav')
+
+        self.sound_music1.volume = 1
+        self.sound_begin.volume = .25
+        self.sound_galaxy.volume = .25
+        self.sound_gameover_voice.volume = .25
+        self.sound_restart.volume = .25
+        self.sound_gameover_impact.volume = .6
+
+
+    def reset_game(self):
+        self.current_offset_y = 0
+        self.current_y_loop = 0
+        self.current_speed_x = 0
+        self.current_offset_x = 0
+        self.tiles_coordinates = []
+        self.score_txt = "SCORE: " + str(self.current_y_loop)
+        self.pre_fill_tiles_coordinates()
+        self.generate_tiles_coordinates()
+        self.state_game_over = False
 
     def is_desktop(self):
         if platform in ('linux', 'windows', 'macosx'):
@@ -194,9 +243,6 @@ class MainWidget(Widget):
             xmin, ymin = self.get_tile_coordinates(tile_coordinates[0], tile_coordinates[1])
             xmax, ymax = self.get_tile_coordinates(tile_coordinates[0]+1, tile_coordinates[1]+1)
 
-            #  2     3
-            #
-            #  1     4
             x1, y1 = self.transform(xmin, ymin)
             x2, y2 = self.transform(xmin, ymax)
             x3, y3 = self.transform(xmax, ymax)
@@ -232,7 +278,7 @@ class MainWidget(Widget):
             self.horizontal_lines[i].points = [x1, y1, x2, y2]
 
     def update(self, dt):
-        # print("dt : " + str(dt*60))
+        #print("dt : " + str(dt*60))
         time_factor = dt*60
 
         self.update_vertical_lines()
@@ -240,26 +286,51 @@ class MainWidget(Widget):
         self.update_tiles()
         self.update_ship()
 
-        speed_y = self.SPEED * self.height / 100
-        self.current_offset_y += speed_y * time_factor
+        if not self.state_game_over and self.state_game_has_started:
+            speed_y = self.SPEED * self.height / 100
+            self.current_offset_y += speed_y * time_factor
 
-        spacing_y = self.H_LINES_SPACING * self.height
-        if self.current_offset_y >= spacing_y:
-            self.current_offset_y -= spacing_y
-            self.current_y_loop += 1
-            self.generate_tiles_coordinates()
+            spacing_y = self.H_LINES_SPACING * self.height
+            while self.current_offset_y >= spacing_y:
+                self.current_offset_y -= spacing_y
+                self.current_y_loop += 1
+                self.score_txt = "SCORE: " + str(self.current_y_loop)
+                self.generate_tiles_coordinates()
 
-        speed_x = self.current_speed_x * self.width / 100
-        self.current_offset_x += speed_x * time_factor
+            speed_x = self.current_speed_x * self.width / 100
+            self.current_offset_x += speed_x * time_factor
 
-        if not self.check_ship_collisions():
+        if not self.check_ship_collisions() and not self.state_game_over:
+            self.state_game_over = True
+            self.menu_title = "G  A  M  E    O  V  E  R"
+            self.menu_button_title = "RESTART"
+            self.menu_widget.opacity = 1
+            self.sound_music1.stop()
+            self.sound_gameover_impact.play()
+            Clock.schedule_once(self.play_voice_game_over, 3)
             print("GAME OVER")
+
+    def play_voice_game_over(self, dt):
+        if self.state_game_over:
+            self.sound_gameover_voice.play()
+
+    def on_menu_button_pressed(self):
+        print("BOUTON")
+        if self.state_game_over:
+            self.sound_restart.play()
+        else:
+            self.sound_begin.play()
+        self.sound_music1.play()
+        if self.sound_music1.state == "play":
+            self.sound_galaxy.stop()
+        self.reset_game()
+        self.state_game_has_started = True
+        self.menu_widget.opacity = 0
+
+
 
 class GalaxyApp(App):
     pass
 
 
 GalaxyApp().run()
-
-
-
