@@ -118,8 +118,9 @@ class MainWidget(RelativeLayout):
 
     def init_ship(self):
         with self.canvas:
-            Color(0, 0, 0)
+            Color(138/255.0, 43/255.0, 226/255.0)
             self.ship = Triangle()
+
 
     def update_ship(self):
         center_x = self.width / 2
@@ -302,7 +303,7 @@ class MainWidget(RelativeLayout):
 
         if not self.check_ship_collisions() and not self.state_game_over:
             self.state_game_over = True
-            self.menu_title = "G  A  M  E    O  V  E  R"
+            self.menu_title = "N U L"
             self.menu_button_title = "RESTART"
             self.menu_widget.opacity = 1
             self.sound_music1.stop()
